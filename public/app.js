@@ -24,6 +24,7 @@ function filterBar(title, subtitle) {
 function bindFilter() { $('#mf').onchange = e => { S.month = e.target.value; render(); }; }
 function drawChart(id, cfg) { if (S.charts[id]) S.charts[id].destroy(); S.charts[id] = new Chart($('#' + id), cfg); }
 
+const fd = d => d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4);
 const wrap = (s, w = 14) => { const out = []; s.split(' - ').forEach(p => { let l = ''; p.split(' ').forEach(x => { if (l && (l + ' ' + x).length > w) { out.push(l); l = x; } else l = (l + ' ' + x).trim(); }); if (l) out.push(l); }); return out; };
 // angka Volume Awal / Realisasi (+ persen) selalu tampil di atas batang
 const lblPlugin = {id: 'lbl', afterDatasetsDraw(ch, a, o) {
@@ -37,13 +38,13 @@ const namePlugin = {id: 'names', afterDraw(ch, a, o) {
   if (!o) return; const c = ch.ctx; c.save(); c.textAlign = 'center';
   o.items.forEach((it, i) => { const x = ch.scales.x.getPixelForTick(i); let y = ch.chartArea.bottom + 18;
     c.font = 'bold 12px system-ui'; c.fillStyle = '#1c2740'; it.name.forEach(l => { c.fillText(l, x, y); y += 15; });
-    c.font = '300 11px system-ui'; c.fillStyle = '#6b7a96'; it.info.forEach(l => { c.fillText(l, x, y); y += 13; }); });
+    c.font = '300 10.5px system-ui'; c.fillStyle = '#6b7a96'; it.info.forEach(l => { c.fillText(l, x, y); y += 13; }); });
   c.restore(); }};
 const valPlugin = {id: 'val', afterDatasetsDraw(ch, a, o) {
   const fm = (o && o.f) || rp; const c = ch.ctx; c.save(); c.textAlign = 'center'; c.font = '600 11px system-ui'; c.fillStyle = NAVY;
   ch.getDatasetMeta(0).data.forEach((b, i) => { const v = ch.data.datasets[0].data[i]; if (v) c.fillText(fm(v), b.x, b.y - 6); }); c.restore(); }};
 
-const chartBox = (id, n, h) => `<div class="scroll"><div style="min-width:${Math.max(n * 140, 320)}px;height:${h}px"><canvas id="${id}"></canvas></div></div>`;
+const chartBox = (id, n, h) => `<div class="scroll"><div style="min-width:${Math.max(n * 150, 320)}px;height:${h}px"><canvas id="${id}"></canvas></div></div>`;
 function lokasiHtml(pre, ships) {
   const k = ships.filter(s => !s.gudang), g = ships.filter(s => s.gudang);
   return (k.length ? chartBox(pre + '_s', k.length, 500) : '<p class="empty">Tidak ada kegiatan kapal pada bulan ini.</p>') +
@@ -59,12 +60,12 @@ function lokasiDraw(pre, ships) {
       datasets: {bar: {barPercentage: 1, categoryPercentage: .8, borderRadius: 3}},
       plugins: {lbl: {v: [list.map(s => ds[0](s)), list.map(s => ds[1](s))], p: pct}, names: {items}}};
   };
-  if (k.length) { const o = mk(k, s => wrap(s.jenis + ' · ' + s.material, 24), [s => s.awal, s => s.real], k.map(s => s.pct));
+  if (k.length) { const o = mk(k, s => wrap(s.jenis + ' · ' + s.material, 24).concat(`(${fd(s.tMulai)} - ${fd(s.tAkhir)})`), [s => s.awal, s => s.real], k.map(s => s.pct));
     o.plugins.tooltip = {callbacks: {title: i => k[i[0].dataIndex].label, label: c => ` ${c.dataset.label}: ${nf(c.parsed.y, 2)}`,
-      afterBody: i => { const s = k[i[0].dataIndex]; return [`${s.jenis} · ${s.material}`, `Progress: ${s.pct == null ? '-' : nf(s.pct, 1) + '%'}`, `Realisasi bulan ini: ${nf(s.bln, 2)}`, `Sisa: ${nf(s.sisa, 2)} · ${s.status}`]; }}};
+      afterBody: i => { const s = k[i[0].dataIndex]; return [`${s.jenis} · ${s.material}`, `Periode: ${fd(s.tMulai)} - ${fd(s.tAkhir)}`, `Progress: ${s.pct == null ? '-' : nf(s.pct, 1) + '%'}`, `Realisasi bulan ini: ${nf(s.bln, 2)}`, `Sisa: ${nf(s.sisa, 2)} · ${s.status}`]; }}};
     drawChart(pre + '_s', {type: 'bar', plugins: [lblPlugin, namePlugin], data: {labels: k.map(s => s.label), datasets: [
       {label: 'Volume Awal (ton)', data: k.map(s => s.awal), backgroundColor: SOFT}, {label: 'Realisasi (ton)', data: k.map(s => s.real), backgroundColor: NAVY}]}, options: o}); }
-  if (g.length) { const o = mk(g, s => wrap(s.material, 24), [s => s.akhir, s => s.real], null);
+  if (g.length) { const o = mk(g, s => wrap(s.material, 24).concat(`(${fd(s.tMulai)} - ${fd(s.tAkhir)})`), [s => s.akhir, s => s.real], null);
     o.plugins.tooltip = {callbacks: {title: i => g[i[0].dataIndex].label, label: c => ` ${c.dataset.label}: ${nf(c.parsed.y, 2)}`}};
     drawChart(pre + '_g', {type: 'bar', plugins: [lblPlugin, namePlugin], data: {labels: g.map(s => s.label), datasets: [
       {label: 'Volume Akhir (ton)', data: g.map(s => s.akhir), backgroundColor: SOFT}, {label: 'Realisasi (ton)', data: g.map(s => s.real), backgroundColor: NAVY}]}, options: o}); }
@@ -86,7 +87,7 @@ function shipTable(ships) {
   return `<div class="wrap"><table><tr><th>Kapal / Gudang</th><th>Jenis</th><th>Material</th><th class="n">Volume Awal</th><th class="n">Realisasi</th><th class="n">Progress</th><th class="n">Sisa / Vol. Akhir</th><th class="n">Revenue</th><th>Status</th></tr>` +
     ships.map(s => `<tr><td>${esc(s.label)}</td><td>${s.gudang ? '-' : s.jenis}</td><td>${esc(s.material)}</td><td class="n">${nf(s.awal, 2)}</td><td class="n">${nf(s.real, 2)}</td>
       <td class="n">${s.pct == null ? '-' : nf(s.pct, 1) + '%'}</td><td class="n">${nf(s.gudang ? s.akhir : s.sisa, 2)}</td><td class="n">${rp(s.revenue)}</td>
-      <td><span class="tag ${s.status === 'Berjalan' ? 'run' : ''}">${s.status}</span>${s.anomali ? ' <span class="tag warn" title="Realisasi melebihi volume awal — periksa data sumber">Cek data</span>' : ''}</td></tr>`).join('') + '</table></div>';
+      <td><span class="tag ${s.status === 'Berjalan' ? 'run' : ''}" title="${esc(s.alasan)}">${s.status}</span>${s.anomali ? ' <span class="tag warn" title="Realisasi melebihi volume awal — periksa data sumber">Cek data</span>' : ''}</td></tr>`).join('') + '</table></div>';
 }
 
 function pageSummary() {

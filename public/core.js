@@ -25,13 +25,17 @@
   }
 
   // Data per kapal untuk satu bulan & lokasi
-  function shipsFor(voyages, month, lokasi) {
+  const STALE_DAYS = 4; // kapal belum 100% tanpa report selama >= 4 hari dianggap Selesai
+  function shipsFor(voyages, month, lokasi, now) {
     const res = [];
     voyages.filter(v => !lokasi || v.lokasi === lokasi).forEach(v => {
       const rs = v.rows.filter(r => ym(r.start) === month);
       if (!rs.length) return;
       const last = rs[rs.length - 1], lastAll = v.rows[v.rows.length - 1];
       const cum = sum(v.rows.filter(r => r.start <= last.start), r => r.realisasi);
+      const today = new Date(now || Date.now()); today.setHours(0, 0, 0, 0);
+      const idle = Math.round((today - new Date(lastAll.finish.slice(0, 10) + 'T00:00')) / 864e5);
+      const st = v.gudang ? 'Gudang' : v.done ? 'Selesai' : idle >= STALE_DAYS ? 'Selesai' : 'Berjalan';
       res.push({
         lokasi: v.lokasi, kapal: v.kapal, jenis: v.jenis, material: v.material, gudang: v.gudang,
         awal: v.gudang ? rs[0].volume : v.total, real: v.gudang ? sum(rs, r => r.realisasi) : cum, bln: sum(rs, r => r.realisasi),
@@ -39,7 +43,8 @@
         sisa: v.gudang ? null : Math.max(last.balance, 0), revenue: sum(rs, r => r.revenue),
         mulai: rs[0].start, tglAkhir: last.finish,
         anomali: !v.gudang && cum > v.total * 1.05 + 5,
-        status: v.gudang ? 'Gudang' : (v.done && last === lastAll ? 'Selesai' : 'Berjalan')
+        status: st, tMulai: v.rows[0].start, tAkhir: lastAll.finish, idle,
+        alasan: v.gudang ? '' : v.done ? 'Progress 100%' : idle >= STALE_DAYS ? `Belum 100%, tidak ada report ${idle} hari` : `Update terakhir ${idle} hari lalu`
       });
     });
     res.sort((a, b) => a.mulai.localeCompare(b.mulai));
@@ -81,6 +86,6 @@
     return best;
   };
 
-  const api = { avgRate, monthlyRate, maxStop, isGudang, buildVoyages, shipsFor, months, dailyRevenue, monthlyRevenue, monthLabel, nf, rp, sum };
+  const api = { STALE_DAYS, avgRate, monthlyRate, maxStop, isGudang, buildVoyages, shipsFor, months, dailyRevenue, monthlyRevenue, monthLabel, nf, rp, sum };
   if (typeof module !== 'undefined') module.exports = api; else root.Core = api;
 })(typeof window !== 'undefined' ? window : globalThis);
