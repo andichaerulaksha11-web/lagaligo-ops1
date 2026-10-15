@@ -2,7 +2,7 @@ const { verify } = require('./_auth');
 
 const COLS = ['nomor','kapal','material','jenis','lokasi','volume','start','finish','stop','wh','realisasi','rate','balance','revenue','remarks'];
 const DEF = 'nomor text, kapal text, material text, jenis text, lokasi text, volume float8, start text, finish text, stop text, wh text, realisasi float8, rate float8, balance float8, revenue float8, remarks text';
-const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+const dbUrl = require('./_db');
 
 async function insertRows(sql, rows) {
   const clean = rows.map(r => Object.fromEntries(COLS.map(c => [c, r[c] ?? null])));

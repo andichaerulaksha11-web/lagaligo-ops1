@@ -1,27 +1,22 @@
 const {nf, rp, monthLabel, sum} = Core;
 const NAVY = '#204685', SOFT = '#a9b9d8', RED = '#D9252A';
-const S = {rows: [], voy: [], month: null, year: null, mode: 'db', charts: {}, token: sessionStorage.getItem('tk') || '', tab: 'xls'};
+const CAB = ['Makassar', 'Garongkong', 'Siawung'];
+const S = {rows: [], voy: [], master: [], month: null, year: null, cur: null, mode: 'db', charts: {}, token: sessionStorage.getItem('tk') || '', tab: 'xls'};
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 const EMPTY = '<div class="card"><p class="empty">Belum ada data. Admin dapat mengunggah data melalui menu <b>Input Data</b>.</p></div>';
+const monthList = () => [...new Set(Core.months(S.rows).concat(S.master.map(m => m.bulan)))].sort();
+const mv = (b, c) => S.master.find(x => x.bulan === b && x.cabang === c);
 
 async function load() {
-  const r = await fetch('/api/records'); const j = await r.json();
-  if (!r.ok) throw new Error(j.error || 'Gagal memuat data');
+  const [r, m] = await Promise.all([fetch('/api/records'), fetch('/api/master')]);
+  const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Gagal memuat data');
   S.rows = j.rows; S.mode = j.mode; S.voy = Core.buildVoyages(S.rows);
-  const ms = Core.months(S.rows);
-  if (!S.month || !ms.includes(S.month)) S.month = ms[ms.length - 1] || null;
-  const ys = [...new Set(ms.map(m => m.slice(0, 4)))];
-  S.cur = ys[ys.length - 1] || null;
-  if (!S.year || !ys.includes(S.year)) S.year = ys[ys.length - 1] || null;
+  S.master = m.ok ? (await m.json()).rows : [];
+  const ms = monthList(), t = new Date(), cur = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`;
+  if (!S.month || !ms.includes(S.month)) S.month = ms.includes(cur) ? cur : [...ms].reverse().find(x => x <= cur) || ms[ms.length - 1] || null;
+  const ys = [...new Set(Core.months(S.rows).map(x => x.slice(0, 4)))]; S.cur = ys[ys.length - 1] || null;
 }
-
-function filterBar(title, subtitle) {
-  const opts = Core.months(S.rows).map(m => `<option value="${m}" ${m === S.month ? 'selected' : ''}>${monthLabel(m, 1)}</option>`).join('');
-  return `<div class="bar"><div><h1>${title}</h1><p class="sub">${subtitle}</p></div>
-    <label class="mf">Bulan <select id="mf">${opts}</select></label></div>`;
-}
-function bindFilter() { $('#mf').onchange = e => { S.month = e.target.value; render(); }; }
 function drawChart(id, cfg) { if (S.charts[id]) S.charts[id].destroy(); S.charts[id] = new Chart($('#' + id), cfg); }
 
 const fd = d => d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4);
@@ -30,8 +25,8 @@ const wrap = (s, w = 14) => { const out = []; s.split(' - ').forEach(p => { let 
 const lblPlugin = {id: 'lbl', afterDatasetsDraw(ch, a, o) {
   if (!o) return; const c = ch.ctx; c.save(); c.textAlign = 'center';
   [0, 1].forEach(d => ch.getDatasetMeta(d).data.forEach((b, i) => { const v = o.v[d][i]; if (v == null) return; let y = b.y - 6;
-    if (d === 1 && o.p && o.p[i] != null) { c.font = '600 11px system-ui'; c.fillStyle = NAVY; c.fillText('(' + nf(o.p[i], 1) + '%)', b.x, y); y -= 13; }
-    c.font = 'bold 11px system-ui'; c.fillStyle = d ? NAVY : '#4a5f86'; c.fillText(nf(Math.trunc(v)), b.x, y); }));
+    if (d === 1 && o.p && o.p[i] != null) { c.font = '600 ' + (o.fs || 11) + 'px system-ui'; c.fillStyle = NAVY; c.fillText('(' + nf(o.p[i], 1) + '%)', b.x, y); y -= 13; }
+    c.font = 'bold ' + (o.fs || 11) + 'px system-ui'; c.fillStyle = d ? NAVY : '#4a5f86'; c.fillText(nf(Math.trunc(v)), b.x, y); }));
   c.restore(); }};
 // nama kapal tebal, info kegiatan tipis di bawah sumbu X
 const namePlugin = {id: 'names', afterDraw(ch, a, o) {
@@ -41,42 +36,70 @@ const namePlugin = {id: 'names', afterDraw(ch, a, o) {
     c.font = '300 10.5px system-ui'; c.fillStyle = '#6b7a96'; it.info.forEach(l => { c.fillText(l, x, y); y += 13; }); });
   c.restore(); }};
 const valPlugin = {id: 'val', afterDatasetsDraw(ch, a, o) {
-  const fm = (o && o.f) || rp; const c = ch.ctx; c.save(); c.textAlign = 'center'; c.font = '600 11px system-ui'; c.fillStyle = NAVY;
+  const fm = (o && o.f) || rp; const c = ch.ctx; c.save(); c.textAlign = 'center'; c.font = '600 ' + (o.fs || 11) + 'px system-ui'; c.fillStyle = NAVY;
   ch.getDatasetMeta(0).data.forEach((b, i) => { const v = ch.data.datasets[0].data[i]; if (v) c.fillText(fm(v), b.x, b.y - 6); }); c.restore(); }};
 
 const chartBox = (id, n, h) => `<div class="scroll"><div style="min-width:${Math.max(n * 150, 320)}px;height:${h}px"><canvas id="${id}"></canvas></div></div>`;
-function lokasiHtml(pre, ships) {
-  const k = ships.filter(s => !s.gudang), g = ships.filter(s => s.gudang);
-  return (k.length ? chartBox(pre + '_s', k.length, 500) : '<p class="empty">Tidak ada kegiatan kapal pada bulan ini.</p>') +
-    (g.length ? '<h3>Gudang / Silo</h3>' + chartBox(pre + '_g', g.length, 400) : '');
+const cv = (id, h) => `<div class="scroll"><div style="min-width:${h > 400 ? 0 : 900}px;height:${h}px"><canvas id="${id}"></canvas></div></div>`;
+const card = (t, sub, inner) => `<div class="card"><h2>${t}</h2><p class="sub">${sub}</p>${inner}</div>`;
+const head = (t, sub) => `<div class="bar"><div><h1>${t}</h1><p class="sub">${sub}</p></div></div>`;
+const kpi = (label, val, unit) => `<div class="card kpi"><small>${label}</small><strong>${val}${unit ? ` <span class="u">${unit}</span>` : ''}</strong></div>`;
+
+// kartu Total Volume (bulan terpilih) + selisih terhadap target
+function volKpi(cab) {
+  const m = mv(S.month, cab); let body;
+  if (!m || m.realisasi == null) body = `<strong>-</strong><div class="vsub">${m ? `Target ${nf(m.target)} Ton · realisasi belum diinput` : 'Belum ada data'}</div>`;
+  else { const d = m.realisasi - m.target, p = m.target > 0 ? m.realisasi / m.target * 100 : null;
+    body = `<strong>${nf(m.realisasi)} <span class="u">Ton</span></strong><div class="vsub ${d < 0 ? 'neg' : ''}">${d > 0 ? '+' : d < 0 ? '-' : ''}${nf(Math.abs(d))}${p == null ? '' : ` (${nf(p, 1)}%)`}</div>`; }
+  return `<div class="card kpi"><small>Total Volume ${cab} · ${monthLabel(S.month, 1)}</small>${body}</div>`;
 }
-function lokasiDraw(pre, ships) {
-  const k = ships.filter(s => !s.gudang), g = ships.filter(s => s.gudang);
-  const mk = (list, infoOf, ds, pct) => {
-    const items = list.map(s => ({name: wrap(s.label, 16), info: infoOf(s)}));
-    const bottom = Math.max(...items.map(i => i.name.length * 15 + i.info.length * 13)) + 26;
-    return {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, layout: {padding: {top: 44, bottom}},
-      scales: {y: {beginAtZero: true, title: {display: true, text: 'Ton'}, ticks: {callback: v => nf(v)}}, x: {grid: {display: false}, ticks: {display: false}}},
-      datasets: {bar: {barPercentage: 1, categoryPercentage: .8, borderRadius: 3}},
-      plugins: {lbl: {v: [list.map(s => ds[0](s)), list.map(s => ds[1](s))], p: pct}, names: {items}}};
-  };
-  if (k.length) { const o = mk(k, s => wrap(s.jenis + ' · ' + s.material, 24).concat(`(${fd(s.tMulai)} - ${fd(s.tAkhir)})`), [s => s.awal, s => s.real], k.map(s => s.pct));
-    o.plugins.tooltip = {callbacks: {title: i => k[i[0].dataIndex].label, label: c => ` ${c.dataset.label}: ${nf(c.parsed.y, 2)}`,
-      afterBody: i => { const s = k[i[0].dataIndex]; return [`${s.jenis} · ${s.material}`, `Periode: ${fd(s.tMulai)} - ${fd(s.tAkhir)}`, `Progress: ${s.pct == null ? '-' : nf(s.pct, 1) + '%'}`, `Realisasi bulan ini: ${nf(s.bln, 2)}`, `Sisa: ${nf(s.sisa, 2)} · ${s.status}`]; }}};
-    drawChart(pre + '_s', {type: 'bar', plugins: [lblPlugin, namePlugin], data: {labels: k.map(s => s.label), datasets: [
-      {label: 'Volume Awal (ton)', data: k.map(s => s.awal), backgroundColor: SOFT}, {label: 'Realisasi (ton)', data: k.map(s => s.real), backgroundColor: NAVY}]}, options: o}); }
-  if (g.length) { const o = mk(g, s => wrap(s.material, 24).concat(`(${fd(s.tMulai)} - ${fd(s.tAkhir)})`), [s => s.akhir, s => s.real], null);
-    o.plugins.tooltip = {callbacks: {title: i => g[i[0].dataIndex].label, label: c => ` ${c.dataset.label}: ${nf(c.parsed.y, 2)}`}};
-    drawChart(pre + '_g', {type: 'bar', plugins: [lblPlugin, namePlugin], data: {labels: g.map(s => s.label), datasets: [
-      {label: 'Volume Akhir (ton)', data: g.map(s => s.akhir), backgroundColor: SOFT}, {label: 'Realisasi (ton)', data: g.map(s => s.real), backgroundColor: NAVY}]}, options: o}); }
+function kapalCards(ships, lokasi) {
+  const k = ships.filter(s => !s.gudang), run = k.filter(s => s.status === 'Berjalan').length, av = Core.avgRate(S.rows, lokasi, S.cur);
+  return kpi('Kapal Beroperasi', k.length) + kpi('Masih berjalan', run) + kpi('Selesai', k.length - run) +
+    kpi(`Rata-rata Loading Rate${S.cur ? ' (' + S.cur + ')' : ''}`, av == null ? '-' : nf(av, 1), 'ton/jam');
+}
+function stopCard(lokasi) {
+  const st = Core.maxStop(S.rows, S.month, lokasi);
+  return `<div class="card kpi"><small>Stop Time Tertinggi · ${monthLabel(S.month, 1)}</small>` + (st ?
+    `<strong>${st.row.stop} <span class="u">jam</span></strong><div class="vsub" style="color:inherit"><b>Alasan:</b> ${esc(st.row.remarks || '-')}</div><div class="vsub">${esc(st.row.kapal)} · ${fd(st.row.start)}</div>` : '<strong>-</strong>') + '</div>';
 }
 
-const yearOpts = () => [...new Set(Core.months(S.rows).map(m => m.slice(0, 4)))].map(y => `<option ${y === S.year ? 'selected' : ''}>${y}</option>`).join('');
-const bindYears = () => document.querySelectorAll('.yf').forEach(e => e.onchange = ev => { S.year = ev.target.value; render(); });
-const trendCard = (id, title, sub) => `<div class="card"><div class="bar" style="margin-bottom:8px"><div><h2>${title}</h2><p class="sub" style="margin:0">${sub}</p></div>
-  <label class="mf">Tahun <select class="yf">${yearOpts()}</select></label></div><div class="chart" style="height:320px"><canvas id="${id}"></canvas></div></div>`;
-function rateChart(id, lokasi) {
-  drawChart(id, {type: 'line', plugins: [valPlugin], data: {labels: Array.from({length: 12}, (_, i) => monthLabel(`${S.year}-${String(i + 1).padStart(2, '0')}`).slice(0, 3)),
+const shipHtml = (id, ships) => ships.some(s => !s.gudang) ? chartBox(id, ships.filter(s => !s.gudang).length, 500) : '<p class="empty">Tidak ada kegiatan kapal pada bulan ini.</p>';
+function shipDraw(id, ships) {
+  const k = ships.filter(s => !s.gudang); if (!k.length) return;
+  const items = k.map(s => ({name: wrap(s.label, 16), info: wrap(s.jenis + ' · ' + s.material, 24).concat(`(${fd(s.tMulai)} - ${fd(s.tAkhir)})`)}));
+  const bottom = Math.max(...items.map(i => i.name.length * 15 + i.info.length * 13)) + 26;
+  drawChart(id, {type: 'bar', plugins: [lblPlugin, namePlugin], data: {labels: k.map(s => s.label), datasets: [
+      {label: 'Volume Awal (ton)', data: k.map(s => s.awal), backgroundColor: SOFT}, {label: 'Realisasi (ton)', data: k.map(s => s.real), backgroundColor: NAVY}]},
+    options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, layout: {padding: {top: 44, bottom}},
+      scales: {y: {beginAtZero: true, title: {display: true, text: 'Ton'}, ticks: {callback: v => nf(v)}}, x: {grid: {display: false}, ticks: {display: false}}},
+      datasets: {bar: {barPercentage: 1, categoryPercentage: .8, borderRadius: 3}},
+      plugins: {lbl: {v: [k.map(s => s.awal), k.map(s => s.real)], p: k.map(s => s.pct)}, names: {items}, tooltip: {callbacks: {
+        title: i => k[i[0].dataIndex].label, label: c => ` ${c.dataset.label}: ${nf(c.parsed.y, 2)}`,
+        afterBody: i => { const s = k[i[0].dataIndex]; return [`${s.jenis} · ${s.material}`, `Periode: ${fd(s.tMulai)} - ${fd(s.tAkhir)}`, `Progress: ${s.pct == null ? '-' : nf(s.pct, 1) + '%'}`, `Realisasi bulan ini: ${nf(s.bln, 2)}`, `Sisa: ${nf(s.sisa, 2)} · ${s.status}`]; }}}}}});
+}
+
+// grafik Total Volume bulanan: target vs realisasi (data dari Master Operasional)
+const hasVol = cab => S.master.some(x => x.cabang === cab && x.bulan.startsWith(S.year));
+const volHtml = cab => card(`Total Volume ${cab} (Bulanan)`, `Target vs realisasi per bulan · ${S.year}`,
+  hasVol(cab) ? cv('c_v_' + cab, 380) : '<p class="empty">Belum ada data target/realisasi. Admin dapat menginputnya di menu <b>Master Operasional</b>.</p>');
+function volDraw(cab) {
+  if (!hasVol(cab)) return;
+  const ms = Array.from({length: 12}, (_, i) => `${S.year}-${String(i + 1).padStart(2, '0')}`), g = ms.map(m => mv(m, cab));
+  const T = g.map(x => x ? x.target : null), R = g.map(x => x && x.realisasi != null ? x.realisasi : null);
+  drawChart('c_v_' + cab, {type: 'bar', plugins: [lblPlugin], data: {labels: ms.map(m => monthLabel(m).slice(0, 3)), datasets: [
+      {label: 'Target (ton)', data: T, backgroundColor: SOFT}, {label: 'Realisasi (ton)', data: R, backgroundColor: NAVY}]},
+    options: {responsive: true, maintainAspectRatio: false, interaction: {mode: 'index', intersect: false}, layout: {padding: {top: 44}},
+      scales: {y: {beginAtZero: true, title: {display: true, text: 'Ton'}, ticks: {callback: v => nf(v)}}, x: {grid: {display: false}}},
+      datasets: {bar: {barPercentage: 1, categoryPercentage: .86, borderRadius: 3}},
+      plugins: {lbl: {fs: 10, v: [T, R], p: R.map((r, i) => r != null && T[i] > 0 ? r / T[i] * 100 : null)}, tooltip: {callbacks: {
+        label: c => ` ${c.dataset.label}: ${nf(c.parsed.y, 2)}`,
+        afterBody: i => { const t = T[i[0].dataIndex], r = R[i[0].dataIndex]; return t != null && r != null ? [`Selisih: ${nf(r - t, 2)}`, `Pencapaian: ${t > 0 ? nf(r / t * 100, 1) + '%' : '-'}`] : []; }}}}}});
+}
+
+const rateHtml = (title, sub) => card(title, sub, cv('c_rate', 320));
+function rateChart(lokasi) {
+  drawChart('c_rate', {type: 'line', plugins: [valPlugin], data: {labels: Array.from({length: 12}, (_, i) => monthLabel(`${S.year}-${String(i + 1).padStart(2, '0')}`).slice(0, 3)),
     datasets: [{label: 'Rata-rata Loading Rate', data: Core.monthlyRate(S.rows, lokasi, S.year), borderColor: NAVY, backgroundColor: NAVY, borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#fff', pointBorderColor: NAVY, pointBorderWidth: 2, tension: .25}]},
     options: {responsive: true, maintainAspectRatio: false, layout: {padding: {top: 24}}, scales: {y: {beginAtZero: true, title: {display: true, text: 'Ton / jam'}}},
       plugins: {legend: {display: false}, val: {f: v => nf(v, 1)}, tooltip: {callbacks: {label: c => ` Rata-rata: ${nf(c.parsed.y, 2)} ton/jam`}}}}});
@@ -91,42 +114,53 @@ function shipTable(ships) {
 }
 
 function pageSummary() {
-  if (!S.month) { $('#app').innerHTML = '<div class="bar"><h1>Executive Summary</h1></div>' + EMPTY; return; }
-  const mk = Core.shipsFor(S.voy, S.month, 'Makassar'), br = Core.shipsFor(S.voy, S.month, 'Barru'), all = mk.concat(br);
-  const rev = sum(all, s => s.revenue), ktn = all.filter(s => !s.gudang), run = ktn.filter(s => s.status === 'Berjalan').length;
-  const years = [...new Set(Core.months(S.rows).map(m => m.slice(0, 4)))];
-  $('#app').innerHTML = filterBar('Executive Summary', 'Ringkasan kegiatan bongkar-muat Makassar & Barru') + `
-  <div class="grid g5" style="margin-bottom:16px">
-    <div class="card kpi"><small>Revenue bulan ini</small><strong>${rp(rev)}</strong></div>
-    <div class="card kpi"><small>Kapal beroperasi</small><strong>${ktn.length}</strong></div>
-    <div class="card kpi"><small>Masih berjalan</small><strong>${run}</strong></div>
-    <div class="card kpi"><small>Selesai</small><strong>${ktn.length - run}</strong></div>
-    <div class="card kpi"><small>Rata-rata Loading Rate (${S.cur})</small><strong>${nf(Core.avgRate(S.rows, null, S.cur), 1)} <span style="font-size:13px;font-weight:500">ton/jam</span></strong></div></div>
-  <div class="card"><h2>Lagaligo Makassar</h2><p class="sub">Volume awal vs realisasi (progress %) · ${monthLabel(S.month, 1)}</p>${lokasiHtml('mk', mk)}</div>
-  <div class="card"><h2>Lagaligo Barru</h2><p class="sub">Volume awal vs realisasi (progress %) · ${monthLabel(S.month, 1)}</p>${lokasiHtml('br', br)}</div>
-  ${trendCard('c_mon', 'Trend Revenue Bulanan', 'Total kolom Revenue per bulan (tidak terpengaruh filter bulan)')}
-  ${trendCard('c_rate', 'Trend Rata-rata Loading Rate Bulanan', 'Makassar + Barru · ton/jam (tidak terpengaruh filter bulan)')}`;
-  bindFilter(); bindYears();
-  lokasiDraw('mk', mk); lokasiDraw('br', br); rateChart('c_rate', null);
-  const mr = Object.fromEntries(Core.monthlyRevenue(S.rows).map(x => [x.m, x.v])), ms = Array.from({length: 12}, (_, i) => `${S.year}-${String(i + 1).padStart(2, '0')}`);
-  drawChart('c_mon', {type: 'bar', plugins: [valPlugin], data: {labels: ms.map(m => monthLabel(m).slice(0, 3)), datasets: [
-      {label: 'Revenue', data: ms.map(m => mr[m] || 0), backgroundColor: NAVY, borderRadius: 3, order: 2},
-      {type: 'line', label: 'Trend', data: ms.map(m => mr[m] || null), borderColor: RED, backgroundColor: RED, borderWidth: 2, pointRadius: 3, order: 1}]},
-    options: {responsive: true, maintainAspectRatio: false, layout: {padding: {top: 18}}, scales: {y: {beginAtZero: true, ticks: {callback: v => rp(v)}}},
-      plugins: {legend: {display: false}, tooltip: {callbacks: {label: c => ` ${c.dataset.label}: ${rp(c.parsed.y)}`}}}}});
+  if (!S.month) { $('#app').innerHTML = head('Executive Summary', '') + EMPTY; return; }
+  const mk = Core.shipsFor(S.voy, S.month, 'Makassar'), br = Core.shipsFor(S.voy, S.month, 'Barru');
+  $('#app').innerHTML = head('Executive Summary', `Ringkasan kegiatan bongkar-muat · ${monthLabel(S.month, 1)}`) +
+    `<div class="kgrid">${CAB.map(volKpi).join('')}</div><div class="kgrid">${kapalCards(mk.concat(br), null)}</div>` +
+    card('Volume Awal vs Realisasi per Kapal Makassar', 'Satuan ton · angka % = progress realisasi terhadap volume awal', shipHtml('c_mk', mk)) +
+    card('Volume Awal vs Realisasi per Kapal Barru', 'Satuan ton · angka % = progress realisasi terhadap volume awal', shipHtml('c_br', br)) +
+    CAB.map(volHtml).join('') + rateHtml('Trend Rata-rata Loading Rate Bulanan', `Makassar + Barru · ton/jam · ${S.year}`);
+  shipDraw('c_mk', mk); shipDraw('c_br', br); CAB.forEach(volDraw); rateChart(null);
 }
 
 function pageLokasi(lokasi) {
-  if (!S.month) { $('#app').innerHTML = `<div class="bar"><h1>Lagaligo ${lokasi}</h1></div>` + EMPTY; return; }
-  const ships = Core.shipsFor(S.voy, S.month, lokasi), st = Core.maxStop(S.rows, S.month, lokasi);
-  const tgl = d => d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4);
-  const stopCard = `<div class="grid g4" style="margin-bottom:16px"><div class="card kpi span2" style="margin:0"><small>Stop Time Tertinggi · ${monthLabel(S.month, 1)}</small>` + (st ?
-    `<strong>${st.row.stop} <span style="font-size:13px;font-weight:500">jam</span></strong><div style="margin-top:4px"><b>Alasan:</b> ${esc(st.row.remarks || '-')}</div><small style="margin-top:2px">${esc(st.row.kapal)} · ${tgl(st.row.start)}</small>` : '<strong>-</strong>') + '</div></div>';
-  $('#app').innerHTML = filterBar('Lagaligo ' + lokasi, `Kegiatan bongkar-muat di pelabuhan ${lokasi} · ${monthLabel(S.month, 1)}`) + stopCard + `
-  <div class="card"><h2>Volume Awal vs Realisasi per Kapal</h2><p class="sub">Satuan ton · angka % di dalam batang = progress realisasi terhadap volume awal</p>${lokasiHtml('x', ships)}</div>
-  ${trendCard('c_rate', 'Trend Rata-rata Loading Rate Bulanan', `Lagaligo ${lokasi} · ton/jam (tidak terpengaruh filter bulan)`)}
-  <div class="card"><h2>Rincian</h2>${shipTable(ships) || '<p class="empty">Tidak ada data.</p>'}</div>`;
-  bindFilter(); bindYears(); lokasiDraw('x', ships); rateChart('c_rate', lokasi);
+  if (!S.month) { $('#app').innerHTML = head('Lagaligo ' + lokasi, '') + EMPTY; return; }
+  const ships = Core.shipsFor(S.voy, S.month, lokasi), cabs = lokasi === 'Makassar' ? ['Makassar'] : ['Garongkong', 'Siawung'];
+  $('#app').innerHTML = head('Lagaligo ' + lokasi, `Kegiatan bongkar-muat di pelabuhan ${lokasi} · ${monthLabel(S.month, 1)}`) +
+    `<div class="kgrid">${cabs.map(volKpi).join('')}${kapalCards(ships, lokasi)}${stopCard(lokasi)}</div>` +
+    card('Volume Awal vs Realisasi per Kapal', 'Satuan ton · angka % = progress realisasi terhadap volume awal', shipHtml('c_ship', ships)) +
+    cabs.map(volHtml).join('') + rateHtml('Trend Loading Rate Bulanan', `Lagaligo ${lokasi} · ton/jam · ${S.year}`) +
+    card('Rincian', `Kegiatan ${monthLabel(S.month, 1)}`, shipTable(ships) || '<p class="empty">Tidak ada data.</p>');
+  shipDraw('c_ship', ships); cabs.forEach(volDraw); rateChart(lokasi);
+}
+
+/* ---------- MASTER OPERASIONAL ---------- */
+function pageMaster() {
+  const t = new Date(), now = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`;
+  const table = cab => { const rows = S.master.filter(x => x.cabang === cab).sort((a, b) => b.bulan.localeCompare(a.bulan));
+    return card('Lagaligo ' + cab, 'Rincian target & realisasi total volume', rows.length ? `<div class="wrap"><table><tr><th>Bulan</th><th class="n">Target Volume</th><th class="n">Realisasi</th><th></th></tr>` +
+      rows.map(r => `<tr><td>${monthLabel(r.bulan, 1)}</td><td class="n">${nf(r.target, 2)}</td><td class="n">${r.realisasi == null ? '-' : nf(r.realisasi, 2)}</td>
+        <td class="n"><button class="sm" data-b="${r.bulan}" data-c="${cab}" data-t="${r.target}" data-r="${r.realisasi ?? ''}">Update</button></td></tr>`).join('') + '</table></div>' : '<p class="empty">Belum ada data.</p>'); };
+  $('#app').innerHTML = head('Master Operasional', 'Input target & realisasi total volume bongkar-muat per bulan (khusus admin)') +
+    (S.mode === 'readonly' ? '<div class="note bad" style="margin-bottom:14px"><b>Database belum terhubung.</b> Data belum bisa disimpan (lihat README).</div>' : '') +
+    `<div class="card" id="mform"><h2>Input Volume</h2><p class="sub" id="mnote">Bulan & cabang yang sudah ada akan diperbarui otomatis. Klik <b>Update</b> pada tabel untuk mengisi form dengan data yang ada.</p>
+    <div class="form"><div><label>Bulan</label><input id="m_bln" type="month" value="${now}"></div>
+      <div><label>Cabang</label><select id="m_cab">${CAB.map(c => `<option value="${c}">Lagaligo ${c}</option>`).join('')}</select></div>
+      <div><label>Target Volume (ton)</label><input id="m_tgt" type="number" step="any" min="0"></div>
+      <div><label>Realisasi (ton)</label><input id="m_real" type="number" step="any" min="0"></div>
+      <div style="align-self:end"><button id="m_go">Input</button></div></div></div>` + CAB.map(table).join('');
+  document.querySelectorAll('.sm').forEach(b => b.onclick = () => {
+    $('#m_bln').value = b.dataset.b; $('#m_cab').value = b.dataset.c; $('#m_tgt').value = b.dataset.t; $('#m_real').value = b.dataset.r;
+    $('#mnote').innerHTML = `Mengubah data <b>${monthLabel(b.dataset.b, 1)} · Lagaligo ${b.dataset.c}</b>. Ubah nilainya lalu klik Input.`;
+    $('#mform').scrollIntoView({behavior: 'smooth'}); $('#m_real').focus(); });
+  $('#m_go').onclick = async () => {
+    const bulan = $('#m_bln').value, tgt = $('#m_tgt').value, real = $('#m_real').value;
+    if (!bulan || tgt === '') return alert('Isi bulan dan target volume.');
+    try { $('#m_go').disabled = true; await send('POST', {bulan, cabang: $('#m_cab').value, target: +tgt, realisasi: real === '' ? null : +real}, '/api/master');
+      await load(); alert('Data tersimpan.'); pageMaster(); }
+    catch (e) { alert(e.message); $('#m_go').disabled = false; }
+  };
 }
 
 function pageLogin() {
@@ -147,8 +181,8 @@ const fmtDT = d => { const t = new Date(d.getTime() + 30000), p = n => String(n)
 const hhmm = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(Math.round(m % 60)).padStart(2, '0')}`;
 const toMin = s => { const m = /^(\d+):(\d+)/.exec(s || ''); return m ? +m[1] * 60 + +m[2] : 0; };
 
-async function send(method, body) {
-  const r = await fetch('/api/records', {method, headers: {'Content-Type': 'application/json', 'x-auth-token': S.token}, body: JSON.stringify(body)});
+async function send(method, body, url = '/api/records') {
+  const r = await fetch(url, {method, headers: {'Content-Type': 'application/json', 'x-auth-token': S.token}, body: JSON.stringify(body)});
   const j = await r.json();
   if (r.status === 401) { logout(); throw new Error(j.error || 'Sesi berakhir'); }
   if (!r.ok) throw new Error(j.error || 'Gagal'); return j;
@@ -265,12 +299,16 @@ function tabList(locked) {
 
 /* ---------- ROUTER ---------- */
 function render() {
-  let p = (location.hash.replace('#/', '') || 'summary');
-  if (p === 'input' && !S.token) { location.hash = '#/login'; return; }
+  const p = (location.hash.replace('#/', '') || 'summary');
+  if ((p === 'input' || p === 'master') && !S.token) { location.hash = '#/login'; return; }
+  S.year = S.month ? S.month.slice(0, 4) : null;
   document.querySelectorAll('aside a').forEach(a => a.classList.toggle('on', a.dataset.p === p));
   $('#authbtn').textContent = S.token ? 'Logout' : 'Login';
+  const show = ['summary', 'makassar', 'barru'].includes(p) && S.month;
+  $('#hfilter').style.display = show ? 'flex' : 'none';
+  if (show) { $('#mf').innerHTML = monthList().map(m => `<option value="${m}" ${m === S.month ? 'selected' : ''}>${monthLabel(m, 1)}</option>`).join(''); $('#mf').onchange = e => { S.month = e.target.value; render(); }; }
   Object.values(S.charts).forEach(c => c.destroy()); S.charts = {};
-  ({summary: pageSummary, makassar: () => pageLokasi('Makassar'), barru: () => pageLokasi('Barru'), input: pageInput, login: pageLogin}[p] || pageSummary)();
+  ({summary: pageSummary, makassar: () => pageLokasi('Makassar'), barru: () => pageLokasi('Barru'), input: pageInput, master: pageMaster, login: pageLogin}[p] || pageSummary)();
 }
 $('#authbtn').onclick = () => { if (S.token) logout(); else location.hash = '#/login'; };
 window.addEventListener('hashchange', render);

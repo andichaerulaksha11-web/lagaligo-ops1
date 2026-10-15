@@ -1,4 +1,4 @@
-# Dashboard PBM – PT. Lagaligo Logistik (v2)
+# Dashboard PBM – PT. Lagaligo Logistik
 
 Halaman: Executive Summary · Lagaligo Makassar · Lagaligo Barru · Input Data (khusus admin).
 Frontend statis (`public/`) + API serverless (`api/`) + database Postgres (Neon).
@@ -17,3 +17,6 @@ Login → Input Data → Upload Excel → klik **Hapus Semua Data**, atau pilih 
 
 ## Format Excel
 Sama dengan Data-PBM2026.xlsx. Lokasi dibaca dari kode Nomor: `RBM-MKS…` = Makassar, `RBM-BRU…` = Barru.
+
+## Master Operasional (khusus admin)
+Menu untuk menginput target & realisasi total volume per bulan untuk Lagaligo Makassar, Garongkong, dan Siawung. Data ini dipakai kartu dan grafik "Total Volume". Bulan + cabang yang sama akan diperbarui otomatis; tombol **Update** pada tabel mengisi form dengan data yang sudah ada. Tabel database (`master_volume`) dibuat otomatis saat pertama kali dibuka.

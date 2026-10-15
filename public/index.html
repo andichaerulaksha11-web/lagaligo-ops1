@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="id"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PT. Lagaligo Logistik | Port Makassar & Barru</title>
-<link rel="icon" type="image/png" href="favicon.png">
+<title>Dashboard PBM – PT. Lagaligo Logistik</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23204685'/><path d='M7 21h18l-3 5H10zM15 6h2v10h-2z' fill='%23fff'/><rect x='6' y='16' width='20' height='3' fill='%23D9252A'/></svg>">
 <link rel="stylesheet" href="style.css">
 </head><body>
-<header><a href="#/summary"><img src="logo.png" alt="PT. Lagaligo Logistik"></a><button id="authbtn" class="hbtn">Login</button></header>
+<header><a href="#/summary"><img src="logo.png" alt="PT. Lagaligo Logistik"></a><div class="hright"><label id="hfilter" class="hf" style="display:none">Bulan <select id="mf"></select></label><button id="authbtn" class="hbtn">Login</button></div></header>
 <div class="layout">
   <aside>
     <small>MENU</small>
@@ -13,6 +13,7 @@
     <a href="#/makassar" data-p="makassar">Lagaligo Makassar</a>
     <a href="#/barru" data-p="barru">Lagaligo Barru</a>
     <a href="#/input" data-p="input">Input Data 🔒</a>
+    <a href="#/master" data-p="master">Master Operasional 🔒</a>
   </aside>
   <main id="app"><p class="empty">Memuat data…</p></main>
 </div>
